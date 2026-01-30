@@ -1,23 +1,29 @@
 name: Flutter CI/CD
 
 on:
-  push:
-    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+
+  push:
+    branches: [ "main" ]
+
   workflow_dispatch:
     inputs:
       build_mode:
-        description: 'Build mode: debug or release'
+        description: "Build mode (debug or release)"
         required: false
-        default: 'release'
+        default: "release"
 
 jobs:
-  build:
+  # ---------------------------
+  # 1. FAST CI JOB (PRs & main)
+  # ---------------------------
+  test:
+    name: Analyze & Test
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Flutter
@@ -33,6 +39,31 @@ jobs:
 
       - name: Run tests
         run: flutter test
+
+  # ---------------------------
+  # 2. BUILD JOB (ONLY main / manual)
+  # ---------------------------
+  build_apk:
+    name: Build APK
+    needs: test
+    runs-on: ubuntu-latest
+
+    # Build APK only:
+    # - after merge to main
+    # - OR manual workflow_dispatch
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
 
       - name: Build APK
         run: flutter build apk --${{ github.event.inputs.build_mode || 'release' }}
