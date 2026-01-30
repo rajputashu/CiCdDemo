@@ -1,8 +1,20 @@
+name: Flutter CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      build_mode:
+        description: 'Build mode: debug or release'
+        required: false
+        default: 'release'
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      BUILD_MODE: release   # default value, can be debug or release
 
     steps:
       - name: Checkout repository
@@ -23,10 +35,10 @@ jobs:
         run: flutter test
 
       - name: Build APK
-        run: flutter build apk --${{ env.BUILD_MODE }}
+        run: flutter build apk --${{ github.event.inputs.build_mode || 'release' }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v3
         with:
-          name: app-${{ env.BUILD_MODE }}
-          path: build/app/outputs/flutter-apk/app-${{ env.BUILD_MODE }}.apk
+          name: app-${{ github.event.inputs.build_mode || 'release' }}
+          path: build/app/outputs/flutter-apk/app-${{ github.event.inputs.build_mode || 'release' }}.apk
