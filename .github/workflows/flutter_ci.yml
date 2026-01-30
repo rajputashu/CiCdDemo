@@ -1,34 +1,32 @@
-name: Flutter CI
-
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      BUILD_MODE: release   # default value, can be debug or release
 
     steps:
-      # 1. Get your source code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Install Flutter SDK
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
 
-      # 3. Download dependencies
       - name: Install dependencies
         run: flutter pub get
 
-      # 4. Static analysis
       - name: Analyze code
         run: flutter analyze
 
-      # 5. Run tests
       - name: Run tests
         run: flutter test
+
+      - name: Build APK
+        run: flutter build apk --${{ env.BUILD_MODE }}
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: app-${{ env.BUILD_MODE }}
+          path: build/app/outputs/flutter-apk/app-${{ env.BUILD_MODE }}.apk
