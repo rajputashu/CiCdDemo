@@ -15,9 +15,6 @@ on:
         default: "release"
 
 jobs:
-  # ---------------------------
-  # 1. FAST CI JOB (PRs & main)
-  # ---------------------------
   test:
     name: Analyze & Test
     runs-on: ubuntu-latest
@@ -26,11 +23,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Flutter SDK cache
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true
 
+      # Pub cache
       - name: Install dependencies
         run: flutter pub get
 
@@ -40,27 +40,23 @@ jobs:
       - name: Run tests
         run: flutter test
 
-  # ---------------------------
-  # 2. BUILD JOB (ONLY main / manual)
-  # ---------------------------
   build_apk:
     name: Build APK
     needs: test
     runs-on: ubuntu-latest
 
-    # Build APK only:
-    # - after merge to main
-    # - OR manual workflow_dispatch
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Flutter + Gradle cache
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true
 
       - name: Install dependencies
         run: flutter pub get
