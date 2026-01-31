@@ -3,10 +3,8 @@ name: Flutter CI/CD
 on:
   pull_request:
     branches: [ "main" ]
-
   push:
     branches: [ "main" ]
-
   workflow_dispatch:
     inputs:
       build_mode:
@@ -42,7 +40,6 @@ jobs:
     name: Build APK
     needs: test
     runs-on: ubuntu-latest
-
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
 
     steps:
@@ -55,7 +52,7 @@ jobs:
           channel: stable
           cache: true
 
-      # Decode release keystore only if building release
+      # 🔐 Decode release keystore only for release builds
       - name: Decode keystore (release only)
         if: ${{ github.event.inputs.build_mode != 'debug' }}
         run: |
@@ -69,7 +66,7 @@ jobs:
       - name: Build APK
         run: flutter build apk --${{ github.event.inputs.build_mode || 'release' }}
         env:
-          # Pass signing secrets only for release builds
+          # Signing only for release builds
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
@@ -85,10 +82,6 @@ jobs:
     name: Firebase App Distribution
     needs: build_apk
     runs-on: ubuntu-latest
-
-    # Release build -> main tester group, debug can be uploaded manually later
-    if: github.ref == 'refs/heads/main' && (github.event.inputs.build_mode == '' || github.event.inputs.build_mode == 'release')
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -98,5 +91,5 @@ jobs:
         with:
           appId: 1:366366010322:android:aca1016c99d2367852760b
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          groups: testers
-          file: build/app/outputs/flutter-apk/app-release.apk
+          groups: ${{ github.event.inputs.build_mode == 'debug' && 'debug-testers' || 'releasetesters' }}
+          file: build/app/outputs/flutter-apk/app-${{ github.event.inputs.build_mode || 'release' }}.apk
