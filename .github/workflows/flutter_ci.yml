@@ -3,10 +3,8 @@ name: Flutter CI/CD
 on:
   push:
     branches: [ "main" ]
-
   pull_request:
     branches: [ "main" ]
-
   workflow_dispatch:
     inputs:
       build_mode:
@@ -15,18 +13,13 @@ on:
         default: "release"
 
 jobs:
-  # --------------------
-  # 1️⃣ TEST JOB (CI)
-  # --------------------
+  # -------------------- TEST --------------------
   test:
-    name: Analyze & Test
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
@@ -35,41 +28,33 @@ jobs:
       - run: flutter analyze
       - run: flutter test
 
-  # --------------------
-  # 2️⃣ BUILD APK
-  # --------------------
+  # -------------------- BUILD --------------------
   build_apk:
-    name: Build APK
     needs: test
     runs-on: ubuntu-latest
-
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      # 🔐 Decode keystore ONLY for release
-      - name: Decode keystore (release only)
-        if: ${{ github.event.inputs.build_mode != 'debug' }}
+      # Decode keystore ONLY for release
+      - name: Decode keystore
+        if: github.event.inputs.build_mode != 'debug'
         run: |
           mkdir -p android/app
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
 
       - run: flutter pub get
 
-      # 🏗 Build APK
       - name: Build APK
         shell: bash
         run: |
           BUILD_MODE="${{ github.event.inputs.build_mode || 'release' }}"
-          echo "Building $BUILD_MODE APK..."
-          if [ "$BUILD_MODE" == "debug" ]; then
+          if [ "$BUILD_MODE" = "debug" ]; then
             flutter build apk --debug
           else
             flutter build apk --release
@@ -79,46 +64,50 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      # 📦 Upload APK
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-${{ github.event.inputs.build_mode || 'release' }}
-          path: build/app/outputs/flutter-apk/
+          name: apk
+          path: build/app/outputs/flutter-apk/*.apk
 
-  # --------------------
-  # 3️⃣ FIREBASE DISTRIBUTION
-  # --------------------
+  # -------------------- FIREBASE DISTRIBUTION --------------------
   firebase_distribution:
-    name: Firebase App Distribution
     needs: build_apk
     runs-on: ubuntu-latest
+
+    # Run for:
+    # - release on main
+    # - debug when manually triggered
+    if: github.ref == 'refs/heads/main' || github.event.inputs.build_mode == 'debug'
 
     steps:
       - uses: actions/checkout@v4
 
-      # ⬇️ Download APK
-      - name: Download APK
+      - name: Download APK artifact
         uses: actions/download-artifact@v4
         with:
+          name: apk
           path: apk
 
-      # 🚀 Upload RELEASE to Firebase
+      - name: Verify APK exists
+        run: ls -la apk
+
+      # 🚀 RELEASE → Firebase
       - name: Upload RELEASE to Firebase
-        if: ${{ github.event.inputs.build_mode != 'debug' }}
+        if: github.event.inputs.build_mode != 'debug'
         uses: wzieba/Firebase-Distribution-Github-Action@v1
         with:
           appId: 1:366366010322:android:aca1016c99d2367852760b
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           groups: releasetesters
-          file: apk/**/app-release.apk
+          file: apk/app-release.apk
 
-      # 🧪 Upload DEBUG to Firebase
+      # 🧪 DEBUG → Firebase
       - name: Upload DEBUG to Firebase
-        if: ${{ github.event.inputs.build_mode == 'debug' }}
+        if: github.event.inputs.build_mode == 'debug'
         uses: wzieba/Firebase-Distribution-Github-Action@v1
         with:
           appId: 1:366366010322:android:aca1016c99d2367852760b
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           groups: debugtesters
-          file: apk/**/app-debug.apk
+          file: apk/app-debug.apk
