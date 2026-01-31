@@ -58,7 +58,7 @@ jobs:
       - name: Decode keystore (release only)
         if: github.event.inputs.build_mode != 'debug'
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/upload-keystore.jks
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
 
       - name: Install dependencies
         run: flutter pub get
