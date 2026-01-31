@@ -55,17 +55,26 @@ jobs:
           channel: stable
           cache: true
 
+      # Decode release keystore only if building release
       - name: Decode keystore (release only)
-        if: github.event.inputs.build_mode != 'debug'
+        if: ${{ github.event.inputs.build_mode != 'debug' }}
         run: |
+          mkdir -p android/app
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
 
       - name: Install dependencies
         run: flutter pub get
 
+      # Build APK
       - name: Build APK
         run: flutter build apk --${{ github.event.inputs.build_mode || 'release' }}
+        env:
+          # Pass signing secrets only for release builds
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
+      # Upload APK artifact
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -77,7 +86,7 @@ jobs:
     needs: build_apk
     runs-on: ubuntu-latest
 
-    # 🔥 Firebase ONLY for release builds on main
+    # Release build -> main tester group, debug can be uploaded manually later
     if: github.ref == 'refs/heads/main' && (github.event.inputs.build_mode == '' || github.event.inputs.build_mode == 'release')
 
     steps:
