@@ -13,68 +13,53 @@ on:
         default: "release"
 
 jobs:
+  # -------------------- TEST --------------------
   test:
-    name: Analyze & Test
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      - name: Install dependencies
-        run: flutter pub get
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
 
-      - name: Analyze code
-        run: flutter analyze
-
-      - name: Run tests
-        run: flutter test
-
+  # -------------------- BUILD --------------------
   build_apk:
-    name: Build APK
     needs: test
     runs-on: ubuntu-latest
 
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
 
-      # Decode release keystore only if building release
-      - name: Decode keystore (release only)
-        if: ${{ github.event.inputs.build_mode != 'debug' }}
+      # Decode keystore ONLY for release
+      - name: Decode keystore
+        if: github.event.inputs.build_mode != 'debug'
         run: |
           mkdir -p android/app
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
 
-      - name: Install dependencies
-        run: flutter pub get
+      - run: flutter pub get
 
       - name: Build APK
         shell: bash
         run: |
           BUILD_MODE="${{ github.event.inputs.build_mode || 'release' }}"
-          echo "Building $BUILD_MODE APK..."
-          if [ "$BUILD_MODE" == "debug" ]; then
+          if [ "$BUILD_MODE" = "debug" ]; then
             flutter build apk --debug
           else
             flutter build apk --release
           fi
         env:
-          # Only needed for release
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
@@ -82,20 +67,29 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-${{ github.event.inputs.build_mode || 'release' }}
-          path: build/app/outputs/flutter-apk/app-${{ github.event.inputs.build_mode || 'release' }}.apk
+          name: apk
+          path: build/app/outputs/flutter-apk/*.apk
 
+  # -------------------- FIREBASE DISTRIBUTION --------------------
   firebase_distribution:
-    name: Firebase App Distribution
     needs: build_apk
     runs-on: ubuntu-latest
 
-    # Only distribute release builds from main branch
+    # ONLY release builds on main
     if: github.ref == 'refs/heads/main' && (github.event.inputs.build_mode == '' || github.event.inputs.build_mode == 'release')
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      # 🔴 THIS WAS MISSING BEFORE
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: apk
+          path: build/app/outputs/flutter-apk
+
+      - name: Verify APK exists
+        run: ls -la build/app/outputs/flutter-apk
 
       - name: Upload to Firebase App Distribution
         uses: wzieba/Firebase-Distribution-Github-Action@v1
