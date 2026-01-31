@@ -52,9 +52,9 @@ jobs:
           channel: stable
           cache: true
 
-      # Decode release keystore (only for release)
+      # Decode release keystore (only for release builds)
       - name: Decode keystore
-        if: ${{ github.event.inputs.build_mode != 'debug' }}
+        if: ${{ github.event.inputs.build_mode == 'release' }}
         run: |
           mkdir -p android/app
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
@@ -64,16 +64,26 @@ jobs:
 
       # Build APK
       - name: Build APK
-        run: flutter build apk --${{ github.event.inputs.build_mode || 'release' }}
+        run: |
+          if [ "${{ github.event.inputs.build_mode }}" == "debug" ]; then
+            flutter build apk --debug
+          else
+            flutter build apk --release
+          fi
         env:
-          # Only needed for release signing
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      # Verify APK exists
+      # Fail if APK does not exist
       - name: Verify APK
-        run: ls -la build/app/outputs/flutter-apk/
+        run: |
+          APK_PATH="build/app/outputs/flutter-apk/app-${{ github.event.inputs.build_mode || 'release' }}.apk"
+          if [ ! -f "$APK_PATH" ]; then
+            echo "ERROR: APK not found at $APK_PATH"
+            exit 1
+          fi
+          ls -la build/app/outputs/flutter-apk/
 
       # Upload APK artifact
       - name: Upload APK artifact
@@ -92,14 +102,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Verify APK
-        run: ls -la build/app/outputs/flutter-apk/
-
       - name: Upload to Firebase App Distribution
         uses: wzieba/Firebase-Distribution-Github-Action@v1
         with:
           appId: 1:366366010322:android:aca1016c99d2367852760b
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          # Select group based on build_mode
           groups: ${{ github.event.inputs.build_mode == 'debug' && 'debug-testers' || 'releasetesters' }}
           file: build/app/outputs/flutter-apk/app-${{ github.event.inputs.build_mode || 'release' }}.apk
