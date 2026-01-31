@@ -10,13 +10,12 @@ on:
       build_mode:
         description: "Build mode (debug or release)"
         required: false
-        default: "release"
+        default: "all" # run both debug and release if not specified
 
 jobs:
   test:
     name: Analyze & Test
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -36,12 +35,13 @@ jobs:
       - name: Run tests
         run: flutter test
 
-  build_apk:
-    name: Build APK
+  build_apks:
+    name: Build APKs
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
-
+    strategy:
+      matrix:
+        build_mode: [debug, release] # build both
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -52,9 +52,9 @@ jobs:
           channel: stable
           cache: true
 
-      # Decode release keystore (only for release builds)
-      - name: Decode keystore
-        if: ${{ github.event.inputs.build_mode == 'release' }}
+      # Decode keystore for release builds
+      - name: Decode keystore (release only)
+        if: matrix.build_mode == 'release'
         run: |
           mkdir -p android/app
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
@@ -62,50 +62,58 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # Build APK
       - name: Build APK
         run: |
-          if [ "${{ github.event.inputs.build_mode }}" == "debug" ]; then
+          echo "Building ${matrix.build_mode} APK..."
+          if [ "${matrix.build_mode}" == "debug" ]; then
             flutter build apk --debug
           else
             flutter build apk --release
           fi
         env:
+          # Only needed for release
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      # Fail if APK does not exist
       - name: Verify APK
         run: |
-          APK_PATH="build/app/outputs/flutter-apk/app-${{ github.event.inputs.build_mode || 'release' }}.apk"
+          APK_PATH="build/app/outputs/flutter-apk/app-${matrix.build_mode}.apk"
           if [ ! -f "$APK_PATH" ]; then
-            echo "ERROR: APK not found at $APK_PATH"
+            echo "❌ APK not found at $APK_PATH"
             exit 1
           fi
           ls -la build/app/outputs/flutter-apk/
 
-      # Upload APK artifact
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-${{ github.event.inputs.build_mode || 'release' }}
-          path: build/app/outputs/flutter-apk/app-${{ github.event.inputs.build_mode || 'release' }}.apk
+          name: app-${matrix.build_mode}
+          path: build/app/outputs/flutter-apk/app-${matrix.build_mode}.apk
 
   firebase_distribution:
     name: Firebase App Distribution
-    needs: build_apk
+    needs: build_apks
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-
+    strategy:
+      matrix:
+        build_mode: [debug, release]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Upload to Firebase App Distribution
+      - name: Verify APK exists
+        run: |
+          APK_PATH="build/app/outputs/flutter-apk/app-${matrix.build_mode}.apk"
+          if [ ! -f "$APK_PATH" ]; then
+            echo "⚠️ APK for ${matrix.build_mode} not found, skipping distribution"
+            exit 0
+          fi
+
+      - name: Upload to Firebase
         uses: wzieba/Firebase-Distribution-Github-Action@v1
         with:
           appId: 1:366366010322:android:aca1016c99d2367852760b
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          groups: ${{ github.event.inputs.build_mode == 'debug' && 'debug-testers' || 'releasetesters' }}
-          file: build/app/outputs/flutter-apk/app-${{ github.event.inputs.build_mode || 'release' }}.apk
+          groups: ${{ matrix.build_mode == 'debug' && 'debug-testers' || 'releasetesters' }}
+          file: build/app/outputs/flutter-apk/app-${matrix.build_mode}.apk
