@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "366366010322",
+    "project_id": "cicd-flutter-c8e53",
+    "storage_bucket": "cicd-flutter-c8e53.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:366366010322:android:aca1016c99d2367852760b",
+        "android_client_info": {
+          "package_name": "com.example.cicd_sample"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC0ctljaM2-jF-NXHMiy-fsmWW8SmkTTkw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
